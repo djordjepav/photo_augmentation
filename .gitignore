@@ -175,7 +175,7 @@ cython_debug/
 
 
 # Model weights
-.ckpt
-.pth
-.safetensors
-.pt
+*.ckpt
+*.pth
+*.safetensors
+*.pt

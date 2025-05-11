@@ -43,7 +43,7 @@ class PersonGeneratingModel:
         """
 
         # Initialize pipeline parameters.
-        device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         torch_dtype = torch.float16 if self.device == "cuda" else torch.float32
 
         # Initialize scheduler for SD pipeline.
@@ -164,18 +164,18 @@ class PhotoInpaintingModel:
         """
 
         # Initialize model parameters.
-        device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         torch_dtype = torch.float16 if self.device == "cuda" else torch.float32
         
         # Initialize base pipeline.
         self.pipe = StableDiffusionInpaintPipeline.from_pretrained(
             model_version, torch_dtype=torch_dtype
-        ).to(device)
+        ).to(self.device)
 
         # Initialize image encoder.
         image_encoder = CLIPVisionModelWithProjection.from_pretrained(
             ip_adapter_version, subfolder="models/image_encoder", torch_dtype=torch_dtype
-        ).to(device)
+        ).to(self.device)
         
         # Initialize IP Adapter.
         self.pipe.load_ip_adapter(
