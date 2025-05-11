@@ -1,0 +1,30 @@
+[project]
+name = "photo-augmentation"
+version = "0.1.0"
+description = "Application for photo augmentation using diffusion models."
+authors = [
+    {name = "Djordje Pavlovic",email = "djordje.pav@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "diffusers (>=0.33.1,<0.34.0)",
+    "transformers (>=4.51.3,<5.0.0)",
+    "opencv-python (>=4.11.0.86,<5.0.0.0)",
+    "fastapi (>=0.115.12,<0.116.0)",
+    "pillow (>=11.2.1,<12.0.0)",
+    "huggingface-hub (>=0.31.1,<0.32.0)",
+    "uvicorn (>=0.34.2,<0.35.0)",
+    "segment-anything (>=1.0,<2.0)",
+    "numpy (<2.0)",
+    "python-multipart (>=0.0.20,<0.0.21)",
+    "torch (>=2.7.0,<3.0.0)",
+    "ultralytics (>=8.3.130,<9.0.0)",
+    "ip-adapter (>=0.1.0,<0.2.0)",
+    "einops (>=0.8.1,<0.9.0)",
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,8 @@
+*.ckpt
+*.safetensors
+*.pth
+*.pt
+poetry.lock
+README.md
+pyproject.toml
+*.pyc
