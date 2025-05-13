@@ -1,0 +1,20 @@
+Standing male:
+Full-body photo of a young man standing casually, wearing jeans and t-shirt, natural daylight, detailed hands, realistic eyes, skin imperfections, street background, 35mm film grain
+
+Standing female:
+Full body portrait of a realistic woman, standing naturally, modern clothing, detailed facial features, neutral background, studio lighting, 8k uhd, skin pores, sharp focus
+
+Standing negative:
+multiple people, more people, deformed, blurry, bad anatomy, disfigured, cloned face, mutated hands, poorly drawn, extra limbs, cartoon, anime, 3d, doll, text, watermark, lowres, bad proportions
+
+FACE
+====
+
+female: "realistic female face, delicate feminine features, soft makeup, smooth skin, symmetrical eyes, natural lips, flawless complexion, studio lighting, high detail"
+negative: "male, beard, stubble, masculine, wrinkles, facial hair, deformed eyes, asymmetric, blurry, cartoon, painting"
+
+male: "realistic male face, strong jawline, masculine features, subtle stubble, defined cheekbones, natural skin texture, professional portrait lighting"
+negative: "female, makeup, lipstick, eyelashes, feminine, soft features, long hair, deformed, blurry, anime, doll"
+
+inpainting: "perfect face symmetry, matching skin tone to original photo, seamless integration with original lighting, natural skin pores, photorealistic, 8k detail"
+negative: "deformed, blurry, bad anatomy, disfigured, poorly drawn face, mutated hands, fused fingers, disconnected limbs, extra limbs, cloned face, asymmetric eyes, unnatural skin tone, overexposed, underexposed, lowres, jpeg artifacts, watermark, text, cartoon, 3d, doll, anime, monochrome"

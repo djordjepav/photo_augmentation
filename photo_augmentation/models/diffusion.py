@@ -1,13 +1,18 @@
 from typing import Union, Optional
 from time import time
+from enum import Enum
 
 import numpy as np
 from PIL import Image
 import torch
-from diffusers import StableDiffusionPipeline, EulerDiscreteScheduler, StableDiffusionInpaintPipeline
+from diffusers import StableDiffusionPipeline, EulerDiscreteScheduler, \
+    StableDiffusionInpaintPipeline, AutoPipelineForInpainting
 from transformers import CLIPVisionModelWithProjection
 
-from .utils import blend_masks
+from ..utils import blend_masks
+
+
+
 
 
 class PersonGeneratingModel:
@@ -22,7 +27,8 @@ class PersonGeneratingModel:
         model_version: str="./v1-5-pruned.safetensors",
         ip_adapter_version: str="h94/IP-Adapter",
         ip_adapter_weights: str="ip-adapter_sd15.bin",
-        device: Optional[str]=None
+        device: Optional[str]=None,
+        seed: Optional[int]=None
     ):
         """Initialize the person generation model.
         
@@ -40,11 +46,14 @@ class PersonGeneratingModel:
         device : Optional[str], optional
             Device to run the model on ('cuda' or 'cpu'), 
             by default None (auto-detected)
+        seed : Optional[int], optional
+            Random seed for reproducibility, by default None
         """
 
         # Initialize pipeline parameters.
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         torch_dtype = torch.float16 if self.device == "cuda" else torch.float32
+        self.seed = seed
 
         # Initialize scheduler for SD pipeline.
         scheduler = EulerDiscreteScheduler.from_pretrained(
@@ -72,10 +81,6 @@ class PersonGeneratingModel:
         image_prompt: Union[Image.Image, np.ndarray, None]=None,
         width: int=512,
         height: int=512,
-        num_inference_steps: int=30,
-        guidance_scale: float=7.5,
-        ip_adapter_scale: float=0.7,
-        seed: Optional[int]=None
     ) -> Image.Image:
         """Generate a photorealistic person image from text and/or image prompts.
         
@@ -91,14 +96,6 @@ class PersonGeneratingModel:
             Output image width in pixels, by default 512
         height : int, optional
             Output image height in pixels, by default 512
-        num_inference_steps : int, optional
-            Number of denoising steps, by default 30
-        guidance_scale : float, optional
-            Text guidance strength (higher = more prompt influence), by default 7.5
-        ip_adapter_scale : float, optional
-            IP-Adapter conditioning strength (0-1), by default 0.7
-        seed : Optional[int], optional
-            Random seed for reproducibility, by default None
         
         Returns
         -------
@@ -108,8 +105,8 @@ class PersonGeneratingModel:
 
         # Random generator.
         generator = torch.Generator(device=self.device)
-        if seed is not None:
-            generator.manual_seed(seed)
+        if self.seed is not None:
+            generator.manual_seed(self.seed)
         else:
             generator.manual_seed(int(time()))
         
@@ -120,13 +117,12 @@ class PersonGeneratingModel:
             ip_adapter_image=image_prompt,
             width=width,
             height=height,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale,
-            ip_adapter_scale=ip_adapter_scale,
+            num_inference_steps=50,
+            guidance_scale=7.5,
+            strength=0.8,
+            ip_adapter_scale=0.7,
             generator=generator,
         ).images[0]
-        
-        # TODO: Handle empty image prompts.
         
         return image
 
@@ -143,7 +139,8 @@ class PhotoInpaintingModel:
         model_version: str="runwayml/stable-diffusion-inpainting", 
         ip_adapter_version: str="h94/IP-Adapter",
         ip_adapter_weights: str="ip-adapter-plus_sd15.safetensors",
-        device: Optional[str]=None
+        device: Optional[str]=None,
+        seed: Optional[int]=None
     ):
         """Initialize the inpainting model.
         
@@ -161,15 +158,20 @@ class PhotoInpaintingModel:
         device : Optional[str], optional
             Device to run the model on ('cuda' or 'cpu'), 
             by default None (auto-detected)
+        seed : Optional[int], optional
+            Random seed for reproducibility, by default None
         """
 
         # Initialize model parameters.
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         torch_dtype = torch.float16 if self.device == "cuda" else torch.float32
+        self.seed = seed
         
         # Initialize base pipeline.
         self.pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            model_version, torch_dtype=torch_dtype
+            model_version, torch_dtype=torch_dtype,
+            safety_checker=None,
+            requires_safety_checker=False,
         ).to(self.device)
 
         # Initialize image encoder.
@@ -192,7 +194,7 @@ class PhotoInpaintingModel:
         person: Union[Image.Image, np.ndarray],
         mask: Union[Image.Image, np.ndarray, None]=None,
         prompt: str="",
-        negative_prompt: str=""
+        negative_prompt: str="",
     ) -> Image.Image:
         """Inpaint a person into an existing image while preserving context.
         
@@ -214,7 +216,14 @@ class PhotoInpaintingModel:
         Image.Image
             The inpainted image with blended edges
         """
-
+        
+        # Random generator.
+        generator = torch.Generator(device=self.device)
+        if self.seed is not None:
+            generator.manual_seed(self.seed)
+        else:
+            generator.manual_seed(int(time()))
+            
         # Prepare inputs.
         out_image = image.copy()
         if isinstance(out_image, np.ndarray):
@@ -232,7 +241,7 @@ class PhotoInpaintingModel:
 
         # Inference.
         result = self.pipe(
-            prompt=prompt + ", in a group photo, naturally blended",
+            prompt=prompt,
             negative_prompt=negative_prompt,
             ip_adapter_image=person,
             image=out_image,
@@ -240,73 +249,16 @@ class PhotoInpaintingModel:
             height=height,
             width=width,
             strength=0.7,
-            guidance_scale=7.5,
+            guidance_scale=9,
             num_inference_steps=30,
+            ip_adapter_scale=0.9,
             inpaint_full_res=True,
-            inpaint_full_res_padding=32
+            inpaint_full_res_padding=32,
+            generator=generator
         ).images[0]
 
         # Blend masks.
-        output = blend_masks(image, result, mask, 10)
-
-        return output
-
-
-    def inpaint_region(
-        self,
-        image: Union[Image.Image, np.ndarray],
-        mask: Union[Image.Image, np.ndarray],
-        prompt: str="",
-        negative_prompt: str=""
-    ) -> Image.Image:
-        """Inpaint a masked region of an image with content matching the prompt.
-        
-        Parameters
-        ----------
-        image : Union[Image.Image, np.ndarray]
-            Base image to modify
-        mask : Union[Image.Image, np.ndarray]
-            Mask defining the region to inpaint
-        prompt : str, optional
-            Text description of desired content, by default ""
-        negative_prompt : str, optional
-            Elements to avoid in the output, by default ""
-        
-        Returns
-        -------
-        Image.Image
-            The inpainted image with blended edges
-        """
-
-        # Prepare input images.
-        out_image = image.copy()
-        if isinstance(out_image, np.ndarray):
-            out_image = Image.fromarray(out_image)
-            
-        if isinstance(mask, np.ndarray):
-            mask = Image.fromarray(mask).convert("L")
-
-        # Inference.
-        width, height = out_image.size
-
-        result = self.pipe(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            image=out_image,
-            ip_adapter_image=out_image,
-            ip_adapter_scale=0,
-            mask_image=mask,
-            height=height,
-            width=width,
-            strength=0.7,
-            guidance_scale=7.5,
-            num_inference_steps=30,
-            inpaint_full_res=True,
-            inpaint_full_res_padding=32
-        ).images[0]
-        
-        # Blend masked region.
-        output = blend_masks(image, result, mask, 10)
+        output = blend_masks(image, result, mask, 5)
 
         return output
 
@@ -339,6 +291,13 @@ class PhotoInpaintingModel:
         Image.Image
             The composited image with natural blending
         """
+                
+        # Random generator.
+        generator = torch.Generator(device=self.device)
+        if self.seed is not None:
+            generator.manual_seed(self.seed)
+        else:
+            generator.manual_seed(int(time()))
 
         # Prepare input images.
         out_image = image.copy()
@@ -360,18 +319,90 @@ class PhotoInpaintingModel:
             prompt=prompt + "a person naturally blending with the group, matching lighting and style",
             negative_prompt=negative_prompt,
             ip_adapter_image=person,
+            ip_adapter_scale=0,
             image=out_image,
             mask_image=mask,
             height=height,
             width=width,
-            strength=0.7,
-            guidance_scale=7.5,
+            strength=0.2,
+            guidance_scale=10,
             num_inference_steps=30,
             inpaint_full_res=True,
-            inpaint_full_res_padding=32
+            inpaint_full_res_padding=32,
+            generator=generator
         ).images[0]
 
         # Blend masks.
-        output = blend_masks(image, result, mask, 10)
+        output = blend_masks(image, result, mask, 5)
 
         return output
+
+
+    def inpaint_region(
+        self,
+        image: Union[Image.Image, np.ndarray],
+        mask: Union[Image.Image, np.ndarray],
+        prompt: str="",
+        negative_prompt: str=""
+    ) -> Image.Image:
+        """Inpaint a masked region of an image with content matching the prompt.
+        
+        Parameters
+        ----------
+        image : Union[Image.Image, np.ndarray]
+            Base image to modify
+        mask : Union[Image.Image, np.ndarray]
+            Mask defining the region to inpaint
+        prompt : str, optional
+            Text description of desired content, by default ""
+        negative_prompt : str, optional
+            Elements to avoid in the output, by default ""
+        
+        Returns
+        -------
+        Image.Image
+            The inpainted image with blended edges
+        """
+
+        # Random generator.
+        generator = torch.Generator(device=self.device)
+        if self.seed is not None:
+            generator.manual_seed(self.seed)
+        else:
+            generator.manual_seed(int(time()))
+
+        # Prepare input images.
+        out_image = image.copy()
+        if isinstance(out_image, np.ndarray):
+            out_image = Image.fromarray(out_image)
+            
+        if isinstance(mask, np.ndarray):
+            mask = Image.fromarray(mask).convert("L")
+
+        # Inference.
+        width, height = out_image.size
+
+        # self.pipe.safety_checker = None,  # Disables the NSFW checker
+        # self.pipe.feature_extractor = None  # Ensures safety components aren't loaded
+
+        result = self.pipe(
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            image=out_image,
+            ip_adapter_image=mask,
+            ip_adapter_scale=0,
+            mask_image=mask,
+            height=height,
+            width=width,
+            strength=1,
+            guidance_scale=2,
+            num_inference_steps=30,
+            inpaint_full_res=True,
+            inpaint_full_res_padding=32,
+            generator=generator
+        ).images[0]
+        
+        # Blend masked region.
+        result = blend_masks(image, result, mask, 0)
+
+        return result
