@@ -15,12 +15,12 @@ TODO: Add more details, specific tasks being solved, etc.
 
 Build the Docker image
 ```bash
-docker build -t people-augmentation .
+docker build -t photo-augmentation .
 ```
 
 Run the container with GPU support
 ```bash
-docker run --gpus all -p 8000:8000 people-augmentation
+docker run --gpus all -p 8000:8000 photo-augmentation
 ```
 
 The API will be available at http://localhost:8000.
