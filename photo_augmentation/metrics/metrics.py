@@ -1,11 +1,19 @@
 import numpy as np
-from skimage.metrics import structural_similarity as ssim
 import torch
-from torchmetrics.image.fid import FrechetInceptionDistance
 import lpips
+from skimage.metrics import structural_similarity as ssim
+from torchmetrics.image.fid import FrechetInceptionDistance
 
 
 def calculate_ssim(original_img: np.ndarray, generated_img: np.ndarray, mask: np.ndarray):
+    """Calculate SSIM between masked regions of two images.
+    
+    :param original_img: Original image array.
+    :param generated_img: Generated image array.
+    :param mask: Binary mask defining region to compare.
+    :returns: SSIM score between the masked regions.
+    """
+
     y, x = np.where(mask > 0)
     min_y, max_y = np.min(y), np.max(y)
     min_x, max_x = np.min(x), np.max(x)
@@ -17,6 +25,13 @@ def calculate_ssim(original_img: np.ndarray, generated_img: np.ndarray, mask: np
 
 
 def calculate_fid(original_img: torch.Tensor, generated_img: torch.Tensor):
+    """Calculate FID score between two images.
+    
+    :param original_img: Original image tensor.
+    :param generated_img: Generated image tensor.
+    :returns: FID score between the images.
+    """
+
     original_img = original_img.permute(2, 0, 1).unsqueeze(0)
     generated_img = generated_img.permute(2, 0, 1).unsqueeze(0)
     
@@ -27,6 +42,13 @@ def calculate_fid(original_img: torch.Tensor, generated_img: torch.Tensor):
 
 
 def calculate_lpips(original_img: torch.Tensor, generated_img: torch.Tensor):
+    """Calculate LPIPS (perceptual similarity) between two images.
+    
+    :param original_img: Original image tensor.
+    :param generated_img: Generated image tensor.
+    :returns: LPIPS perceptual similarity score.
+    """
+
     original_img = original_img.permute(2, 0, 1).unsqueeze(0).float() / 128 - 1
     generated_img = generated_img.permute(2, 0, 1).unsqueeze(0).float() / 128 - 1
     

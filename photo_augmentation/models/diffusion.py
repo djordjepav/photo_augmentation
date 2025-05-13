@@ -1,25 +1,22 @@
-from typing import Union, Optional
 from time import time
-from enum import Enum
+from typing import Optional, Union
 
 import numpy as np
-from PIL import Image
 import torch
-from diffusers import StableDiffusionPipeline, EulerDiscreteScheduler, \
-    StableDiffusionInpaintPipeline, AutoPipelineForInpainting
+from diffusers import (
+    EulerDiscreteScheduler,
+    StableDiffusionInpaintPipeline,
+    StableDiffusionPipeline
+)
+from PIL import Image
 from transformers import CLIPVisionModelWithProjection
 
 from ..utils import blend_masks
 
 
-
-
-
 class PersonGeneratingModel:
-    """A model for generating photorealistic person images using Stable Diffusion with IP-Adapter.
-    
-    This class handles the generation of person images either from text prompts alone or
-    with additional image guidance through IP-Adapter.
+    """
+    A model for generating photorealistic person images using Stable Diffusion with IP-Adapter.
     """
     
     def __init__(
@@ -30,24 +27,14 @@ class PersonGeneratingModel:
         device: Optional[str]=None,
         seed: Optional[int]=None
     ):
-        """Initialize the person generation model.
+        """
+        Initialize the person generation model.
         
-        Parameters
-        ----------
-        model_version : str, optional
-            Path or identifier for the Stable Diffusion model weights, 
-            by default "./v1-5-pruned.safetensors"
-        ip_adapter_version : str, optional
-            Repository ID for IP-Adapter weights, 
-            by default "h94/IP-Adapter"
-        ip_adapter_weights : str, optional
-            Specific weight file name for IP-Adapter, 
-            by default "ip-adapter_sd15.bin"
-        device : Optional[str], optional
-            Device to run the model on ('cuda' or 'cpu'), 
-            by default None (auto-detected)
-        seed : Optional[int], optional
-            Random seed for reproducibility, by default None
+        :param model_version: Path or identifier for the Stable Diffusion model weights.
+        :param ip_adapter_version: Repository ID for IP-Adapter weights.
+        :param ip_adapter_weights: Specific weight file name for IP-Adapter.
+        :param device: Device to run the model on ('cuda' or 'cpu').
+        :param seed: Random seed for reproducibility.
         """
 
         # Initialize pipeline parameters.
@@ -76,31 +63,29 @@ class PersonGeneratingModel:
 
     def generate_person(
         self,
+        prompt_image: Union[Image.Image, np.ndarray, None]=None,
         prompt: str="",
         negative_prompt: str="",
-        image_prompt: Union[Image.Image, np.ndarray, None]=None,
+        strength: float=0.8,
+        guidance_scale: float=7.5,
+        ip_adapter_scale: float=0.7,
         width: int=512,
         height: int=512,
+        num_inference_steps: int=30,
     ) -> Image.Image:
-        """Generate a photorealistic person image from text and/or image prompts.
+        """
+        Generate a photorealistic person image from text and/or image prompts.
         
-        Parameters
-        ----------
-        prompt : str, optional
-            Text description of the desired person, by default ""
-        negative_prompt : str, optional
-            Text description of elements to avoid, by default ""
-        image_prompt : Union[Image.Image, np.ndarray, None], optional
-            Reference image for IP-Adapter conditioning, by default None
-        width : int, optional
-            Output image width in pixels, by default 512
-        height : int, optional
-            Output image height in pixels, by default 512
-        
-        Returns
-        -------
-        Image.Image
-            Generated person image
+        :param prompt_image: Reference image for IP-Adapter conditioning.
+        :param prompt: Text description of the desired person.
+        :param negative_prompt: Text description of elements to avoid.
+        :param strength: Strength of the generation effect.
+        :param guidance_scale: Controls how much the prompt influences generation.
+        :param ip_adapter_scale: Strength of IP-Adapter conditioning.
+        :param width: Output image width in pixels.
+        :param height: Output image height in pixels.
+        :param num_inference_steps: Number of denoising steps.
+        :returns: Generated person image.
         """
 
         # Random generator.
@@ -110,17 +95,22 @@ class PersonGeneratingModel:
         else:
             generator.manual_seed(int(time()))
         
+        # Handle inference without image prompt.
+        if prompt_image is None:
+            prompt_image = Image.new("RGB", (height, width), 0)
+            ip_adapter_scale = 0
+
         # Inference.
         image = self.pipe(
             prompt=prompt,
             negative_prompt=negative_prompt,
-            ip_adapter_image=image_prompt,
+            ip_adapter_image=prompt_image,
             width=width,
             height=height,
-            num_inference_steps=50,
-            guidance_scale=7.5,
-            strength=0.8,
-            ip_adapter_scale=0.7,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
+            strength=strength,
+            ip_adapter_scale=ip_adapter_scale,
             generator=generator,
         ).images[0]
         
@@ -128,10 +118,9 @@ class PersonGeneratingModel:
 
 
 class PhotoInpaintingModel:
-    """A model for inpainting persons into photos using Stable Diffusion Inpainting with IP-Adapter.
-    
-    This class handles the integration of persons into existing images while maintaining
-    consistency with the original lighting, style, and composition.
+    """
+    A model for inpainting persons and backgrounds into photos using 
+    Stable Diffusion Inpainting.
     """
 
     def __init__(
@@ -142,24 +131,14 @@ class PhotoInpaintingModel:
         device: Optional[str]=None,
         seed: Optional[int]=None
     ):
-        """Initialize the inpainting model.
+        """
+        Initialize the inpainting model.
         
-        Parameters
-        ----------
-        model_version : str, optional
-            Stable Diffusion inpainting model identifier, 
-            by default "runwayml/stable-diffusion-inpainting"
-        ip_adapter_version : str, optional
-            Repository ID for IP-Adapter weights, 
-            by default "h94/IP-Adapter"
-        ip_adapter_weights : str, optional
-            Specific weight file name for IP-Adapter, 
-            by default "ip-adapter-plus_sd15.safetensors"
-        device : Optional[str], optional
-            Device to run the model on ('cuda' or 'cpu'), 
-            by default None (auto-detected)
-        seed : Optional[int], optional
-            Random seed for reproducibility, by default None
+        :param model_version: Stable Diffusion inpainting model identifier.
+        :param ip_adapter_version: Repository ID for IP-Adapter weights.
+        :param ip_adapter_weights: Specific weight file name for IP-Adapter.
+        :param device: Device to run the model on ('cuda' or 'cpu').
+        :param seed: Random seed for reproducibility.
         """
 
         # Initialize model parameters.
@@ -188,180 +167,37 @@ class PhotoInpaintingModel:
         )
 
 
-    def inpaint_person(
-        self,
-        image: Union[Image.Image, np.ndarray],
-        person: Union[Image.Image, np.ndarray],
-        mask: Union[Image.Image, np.ndarray, None]=None,
-        prompt: str="",
-        negative_prompt: str="",
-    ) -> Image.Image:
-        """Inpaint a person into an existing image while preserving context.
-        
-        Parameters
-        ----------
-        image : Union[Image.Image, np.ndarray]
-            Base image to modify
-        person : Union[Image.Image, np.ndarray]
-            Person image to inpaint
-        mask : Union[Image.Image, np.ndarray, None], optional
-            Mask defining the inpainting region, by default None
-        prompt : str, optional
-            Text guidance for the inpainting, by default ""
-        negative_prompt : str, optional
-            Elements to avoid in the output, by default ""
-        
-        Returns
-        -------
-        Image.Image
-            The inpainted image with blended edges
-        """
-        
-        # Random generator.
-        generator = torch.Generator(device=self.device)
-        if self.seed is not None:
-            generator.manual_seed(self.seed)
-        else:
-            generator.manual_seed(int(time()))
-            
-        # Prepare inputs.
-        out_image = image.copy()
-        if isinstance(out_image, np.ndarray):
-            out_image = Image.fromarray(out_image)
-            
-        if isinstance(person, np.ndarray):
-            person = Image.fromarray(person)
-
-        width, height = out_image.size
-        
-        if mask is None:
-            mask = np.zeros((width, height))
-        if isinstance(mask, np.ndarray):
-            mask = Image.fromarray(mask).convert("L")
-
-        # Inference.
-        result = self.pipe(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            ip_adapter_image=person,
-            image=out_image,
-            mask_image=mask,
-            height=height,
-            width=width,
-            strength=0.7,
-            guidance_scale=9,
-            num_inference_steps=30,
-            ip_adapter_scale=0.9,
-            inpaint_full_res=True,
-            inpaint_full_res_padding=32,
-            generator=generator
-        ).images[0]
-
-        # Blend masks.
-        output = blend_masks(image, result, mask, 5)
-
-        return output
-
-
-    def inject_person(
-        self,
-        image: Union[Image.Image, np.ndarray], 
-        person: Union[Image.Image, np.ndarray], 
-        mask: Union[Image.Image, np.ndarray, None]=None, 
-        prompt: str="",
-        negative_prompt: str=""
-    ) -> Image.Image:
-        """Inject a person into an image while matching lighting and style.
-        
-        Parameters
-        ----------
-        image : Union[Image.Image, np.ndarray]
-            Target background image
-        person : Union[Image.Image, np.ndarray]
-            Person image to inject
-        mask : Union[Image.Image, np.ndarray, None], optional
-            Region where person should be placed, by default None
-        prompt : str, optional
-            Text description guiding the integration, by default ""
-        negative_prompt : str, optional
-            Elements to avoid in the output, by default ""
-        
-        Returns
-        -------
-        Image.Image
-            The composited image with natural blending
-        """
-                
-        # Random generator.
-        generator = torch.Generator(device=self.device)
-        if self.seed is not None:
-            generator.manual_seed(self.seed)
-        else:
-            generator.manual_seed(int(time()))
-
-        # Prepare input images.
-        out_image = image.copy()
-        if isinstance(out_image, np.ndarray):
-            out_image = Image.fromarray(out_image)
-            
-        if isinstance(person, np.ndarray):
-            person = Image.fromarray(person)
-
-        width, height = out_image.size
-        
-        if mask is None:
-            mask = np.zeros((width, height))
-        if isinstance(mask, np.ndarray):
-            mask = Image.fromarray(mask).convert("L")
-
-        # Inference.
-        result = self.pipe(
-            prompt=prompt + "a person naturally blending with the group, matching lighting and style",
-            negative_prompt=negative_prompt,
-            ip_adapter_image=person,
-            ip_adapter_scale=0,
-            image=out_image,
-            mask_image=mask,
-            height=height,
-            width=width,
-            strength=0.2,
-            guidance_scale=10,
-            num_inference_steps=30,
-            inpaint_full_res=True,
-            inpaint_full_res_padding=32,
-            generator=generator
-        ).images[0]
-
-        # Blend masks.
-        output = blend_masks(image, result, mask, 5)
-
-        return output
-
-
-    def inpaint_region(
+    def inpaint(
         self,
         image: Union[Image.Image, np.ndarray],
         mask: Union[Image.Image, np.ndarray],
+        prompt_image: Union[Image.Image, np.ndarray, None]=None,
         prompt: str="",
-        negative_prompt: str=""
+        negative_prompt: str="",
+        strength=0.8,
+        guidance_scale=7.5,
+        ip_adapter_scale: int=0,
+        blend_scale: int=0,
+        inpaint_full_res: bool=True,
+        inpaint_full_res_padding: bool=32,
+        num_inference_steps=30,
     ) -> Image.Image:
-        """Inpaint a masked region of an image with content matching the prompt.
+        """
+        Inpaint a masked region of an image with content matching the prompt.
         
-        Parameters
-        ----------
-        image : Union[Image.Image, np.ndarray]
-            Base image to modify
-        mask : Union[Image.Image, np.ndarray]
-            Mask defining the region to inpaint
-        prompt : str, optional
-            Text description of desired content, by default ""
-        negative_prompt : str, optional
-            Elements to avoid in the output, by default ""
-        
-        Returns
-        -------
-        Image.Image
-            The inpainted image with blended edges
+        :param image: Base image to modify.
+        :param mask: Mask defining the region to inpaint.
+        :param prompt_image: Reference image for IP-Adapter conditioning.
+        :param prompt: Text description of desired content.
+        :param negative_prompt: Elements to avoid in the output.
+        :param strength: Strength of the inpainting effect.
+        :param guidance_scale: Controls how much the prompt influences generation.
+        :param ip_adapter_scale: Strength of IP-Adapter conditioning.
+        :param blend_scale: Size of Gaussian blur kernel for edge blending.
+        :param inpaint_full_res: Whether to process only the masked area at full resolution.
+        :param inpaint_full_res_padding: Border around mask in pixels.
+        :param num_inference_steps: Number of denoising steps.
+        :returns: The inpainted image with blended edges.
         """
 
         # Random generator.
@@ -378,31 +214,33 @@ class PhotoInpaintingModel:
             
         if isinstance(mask, np.ndarray):
             mask = Image.fromarray(mask).convert("L")
+        
+        # Handle inference without image prompt.
+        if prompt_image is None:
+            prompt_image = out_image.copy()
+            ip_adapter_scale = 0
 
         # Inference.
         width, height = out_image.size
 
-        # self.pipe.safety_checker = None,  # Disables the NSFW checker
-        # self.pipe.feature_extractor = None  # Ensures safety components aren't loaded
-
         result = self.pipe(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
             image=out_image,
-            ip_adapter_image=mask,
-            ip_adapter_scale=0,
             mask_image=mask,
             height=height,
             width=width,
-            strength=1,
-            guidance_scale=2,
-            num_inference_steps=30,
-            inpaint_full_res=True,
-            inpaint_full_res_padding=32,
+            strength=strength,
+            guidance_scale=guidance_scale,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            ip_adapter_image=prompt_image,
+            ip_adapter_scale=ip_adapter_scale,
+            num_inference_steps=num_inference_steps,
+            inpaint_full_res=inpaint_full_res,
+            inpaint_full_res_padding=inpaint_full_res_padding,
             generator=generator
         ).images[0]
         
         # Blend masked region.
-        result = blend_masks(image, result, mask, 0)
+        result = blend_masks(image, result, mask, blend_scale)
 
         return result

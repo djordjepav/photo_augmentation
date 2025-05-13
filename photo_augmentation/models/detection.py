@@ -1,4 +1,4 @@
-from typing import Union, List, Tuple
+from typing import List, Tuple, Union
 
 import numpy as np
 from PIL import Image
@@ -6,14 +6,16 @@ from ultralytics import YOLO
 
 
 class PersonDetectionModel:
-    """A person detection model using YOLOv8 for identifying and localizing persons in images.
+    """
+    A person detection model using YOLOv8 for identifying and localizing persons in images.
     
     This class provides an interface to YOLOv8 object detection model specifically
     configured to detect persons in input images.
     """
 
     def __init__(self):
-        """Initialize the person detection model with YOLOv8 nano weights.
+        """
+        Initialize the person detection model with YOLOv8 nano weights.
         
         Loads the pre-trained YOLOv8n model ('yolov8n.pt') which is optimized
         for person detection tasks.
@@ -23,24 +25,11 @@ class PersonDetectionModel:
 
 
     def detect(self, image: Union[np.ndarray, Image.Image]) -> List[Tuple[int, int, int, int]]:
-        """Detect persons in the input image and return their bounding boxes.
-        
-        Parameters
-        ----------
-        image : Union[np.ndarray, Image.Image]
-            Input image to process. Can be either a numpy array or PIL Image.
-            
-        Returns
-        -------
-        List[Tuple[int, int, int, int]]
-            List of bounding boxes for detected persons, where each box is represented
-            as (x1, y1, x2, y2) coordinates of the top-left and bottom-right corners.
-            
-        Notes
-        -----
-        - Only detects objects classified as 'person' (class 0 in YOLO)
-        - The bounding box coordinates are returned as integers
-        - Returns an empty list if no persons are detected
+        """
+        Detect persons in the input image and return their bounding boxes.
+
+        :param image: Input image to process.
+        :returns: List of bounding boxes for detected persons.
         """
 
         image = np.asarray(image)
