@@ -14,7 +14,7 @@ class PersonSegmentationModel:
     masks for persons given their bounding boxes.
     """
 
-    def __init__(self, model_type="vit_b", checkpoint="./sam_vit_b_01ec64.pth"):
+    def __init__(self, model_type="vit_b", checkpoint="./models/sam_vit_b_01ec64.pth"):
         """
         Initialize the segmentation model with SAM.
 

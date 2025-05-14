@@ -21,7 +21,7 @@ class PersonGeneratingModel:
     
     def __init__(
         self,
-        model_version: str="./v1-5-pruned.safetensors",
+        model_version: str="./models/v1-5-pruned.safetensors",
         ip_adapter_version: str="h94/IP-Adapter",
         ip_adapter_weights: str="ip-adapter_sd15.bin",
         device: Optional[str]=None,

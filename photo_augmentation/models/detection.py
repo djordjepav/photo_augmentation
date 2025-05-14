@@ -13,7 +13,7 @@ class PersonDetectionModel:
     configured to detect persons in input images.
     """
 
-    def __init__(self):
+    def __init__(self, weights: str="./models/yolov8n.pt"):
         """
         Initialize the person detection model with YOLOv8 nano weights.
         
@@ -21,7 +21,7 @@ class PersonDetectionModel:
         for person detection tasks.
         """
 
-        self.yolo_model = YOLO('./yolov8n.pt')
+        self.yolo_model = YOLO(weights)
 
 
     def detect(self, image: Union[np.ndarray, Image.Image]) -> List[Tuple[int, int, int, int]]:

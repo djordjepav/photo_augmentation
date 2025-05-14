@@ -60,7 +60,6 @@ def blend_masks(
     # Create transparent version of new content.
     transparent_content = content.copy()
     
-    print(transparent_content.size, mask.size)
     # Apply feathered mask to alpha channel.
     transparent_content.putalpha(mask)
     
@@ -127,7 +126,6 @@ def crop_and_upsample_mask(
     
     # Continue with cropped image.
     height, width = mask.size
-    print(min_width, min_height, width, height)
     
     # Check if image meets minimum dimensions.
     if (width >= min_width and height >= min_height) and not upscale:

@@ -6,3 +6,5 @@ poetry.lock
 README.md
 pyproject.toml
 *.pyc
+models/
+tiny_db/

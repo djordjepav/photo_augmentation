@@ -4,18 +4,19 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y \
     wget \
-    git \
+    libgl1 \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 
-RUN wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
-RUN wget https://huggingface.co/Ultralytics/YOLOv8/resolve/main/yolov8n.pt
-RUN wget https://huggingface.co/runwayml/stable-diffusion-v1-5/resolve/main/v1-5-pruned.safetensors
-
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install git+https://github.com/tencent-ailab/IP-Adapter.git
 
 COPY . .
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/docs || exit 1
+
+CMD ["/bin/sh", "-c", "uvicorn main:app --host 0.0.0.0 --port 8000 2>&1"]

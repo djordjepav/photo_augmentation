@@ -1,11 +1,12 @@
 import base64
+from datetime import datetime
 import io
 import logging
 from enum import Enum
 
 import numpy as np
 import torch
-from fastapi import File, HTTPException, UploadFile
+from fastapi import File, Request, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from PIL import Image
 
@@ -21,7 +22,7 @@ from ..utils import (
     plot_mask_contours,
     resize_if_large,
 )
-from . import app
+from . import app, db
 
 
 class Prompts(Enum):
@@ -47,15 +48,51 @@ class Prompts(Enum):
 logger = logging.getLogger(__name__)
 
 # Initialize models.
-inpaintor = PhotoInpaintingModel()
-generator = PersonGeneratingModel()
-detector = PersonDetectionModel()
-segmentor = PersonSegmentationModel()
+inpaintor = PhotoInpaintingModel(
+    model_version="./models/models--runwayml--stable-diffusion-inpainting/snapshots/8a4288a76071f7280aedbdb3253bdb9e9d5d84bb", 
+    # model_version="runwayml/stable-diffusion-inpainting",
+    ip_adapter_version="h94/IP-Adapter",
+    ip_adapter_weights="ip-adapter-plus_sd15.safetensors"
+)
+
+generator = PersonGeneratingModel(
+    model_version="./models/v1-5-pruned.safetensors",
+    ip_adapter_version="h94/IP-Adapter",
+    ip_adapter_weights="ip-adapter_sd15.bin",
+)
+
+detector = PersonDetectionModel(weights='./models/yolov8n.pt')
+
+segmentor = PersonSegmentationModel(
+    model_type="vit_b", 
+    checkpoint="./models/sam_vit_b_01ec64.pth"
+)
 
 
-# DONE
+def __log_request(request: Request, additional_dict: dict):
+    db.insert({
+        "timestamp": datetime.utcnow().isoformat(),
+        "request": {
+            "method": request.method,
+            "url": str(request.url),
+            "headers": dict(request.headers),
+            "client": request.client.host
+        },
+        "data": additional_dict
+    })
+
+
+def __encode_image_base64(image: Image.Image) -> str:
+    img_byte_arr = io.BytesIO()
+    image.save(img_byte_arr, format='PNG')
+    img_byte_arr.seek(0)
+
+    return base64.b64encode(img_byte_arr.getvalue()).decode('utf-8')
+
+
 @app.post("/generate_person")
 async def generate_person(
+    request: Request,
     prompt_image: UploadFile=File(None),
     prompt: str="",
     negative_prompt: str="",
@@ -72,9 +109,7 @@ async def generate_person(
     try:
         # Default image size.
         width, height = 512, 512
-        
-        print(prompt_image)
-        
+                
         # Prepare inputs.
         if prompt_image is not None:
             prompt_image = Image.open(io.BytesIO(await prompt_image.read()))
@@ -100,6 +135,15 @@ async def generate_person(
         person.save(img_byte_arr, format='PNG')
         img_byte_arr.seek(0)
         
+        # Log to database.
+        log_db = {
+            "prompt_image": __encode_image_base64(prompt_image),
+            "output_image": __encode_image_base64(person),
+            "prompt": prompt,
+            "negative_prompt": negative_prompt
+        }
+        __log_request(request, log_db)
+        
         return StreamingResponse(img_byte_arr, media_type="image/png")
     
     except Exception as e:
@@ -109,6 +153,7 @@ async def generate_person(
 
 @app.post("/swap_person")
 async def swap_person(
+    request: Request,
     image: UploadFile=File(...),
     prompt_image: UploadFile=File(None),
     prompt_generation: str="",
@@ -118,7 +163,6 @@ async def swap_person(
     use_generated_person: bool=False,
     return_metrics: bool=False,
     person_index: int=0,
-    debug_mode: bool=False,
 ):
     """
     Replace a person in an image with a generated or reference person.
@@ -132,7 +176,6 @@ async def swap_person(
     :param use_generated_person: Whether to use generated person.
     :param return_metrics: Whether to return quality metrics.
     :param person_index: Index of person to replace.
-    :param debug_mode: Whether to return debug visualization.
     :returns: Modified image or dict with image and metrics.
     """
 
@@ -146,7 +189,7 @@ async def swap_person(
             prompt_image = Image.open(io.BytesIO(await prompt_image.read()))
             prompt_image = resize_if_large(prompt_image)
             prompt_image = crop_to_divisible(prompt_image)
-        
+
         # Detection and segmentation on people on photo.
         bboxes = detector.detect(image)        
         masks = segmentor.segment(image, bboxes)
@@ -200,25 +243,21 @@ async def swap_person(
             inpaint_full_res_padding=64,
         )
         
-        # TODO: Change to PIL methods.
-        if debug_mode:
-            # Temporary stitched solution.
-            final_image = np.zeros(
-                (inapainted_image.size[1], inapainted_image.size[0] * 2, 3), dtype=np.uint8
-            )
-            final_image[:, :inapainted_image.size[0], :] = np.asarray(inapainted_image)
-            final_image[
-                :prompt_image.size[1], 
-                inapainted_image.size[0]:inapainted_image.size[0]+prompt_image.size[0], 
-                :
-            ] = np.asarray(prompt_image)
-            final_image = Image.fromarray(final_image)
-        else:
-            final_image = inapainted_image
+        # Log request to db.        
+        log_db = {
+            "image": __encode_image_base64(image),
+            "prompt_image": __encode_image_base64(prompt_image),
+            "output_image": __encode_image_base64(inapainted_image),
+            "prompt_generation": prompt_generation,
+            "negative_prompt_generation": negative_prompt_generation,
+            "prompt_inpainting": prompt_inpainting,
+            "negative_prompt_inpainting": negative_prompt_inpainting,
+        }
+        __log_request(request, log_db)
 
         # Prepare response.
         img_byte_arr = io.BytesIO()
-        final_image.save(img_byte_arr, format='PNG')
+        inapainted_image.save(img_byte_arr, format='PNG')
         img_byte_arr.seek(0)
     
         # Return metrics if required.
@@ -255,11 +294,11 @@ async def swap_person(
 
 @app.post("/inject_person")
 async def inject_person(
+    request: Request,
     image: UploadFile=File(...),
     prompt_image: UploadFile=File(None),
     prompt: str="",
     negative_prompt: str="",
-    debug_mode: bool=False,
 ):
     """
     Inject a new person into an existing image.
@@ -268,7 +307,6 @@ async def inject_person(
     :param prompt_image: Reference image for person generation.
     :param prompt: Text description of desired person.
     :param negative_prompt: Elements to avoid in output.
-    :param debug_mode: Whether to return debug visualization.
     :returns: Modified image with injected person.
     """
     
@@ -282,7 +320,7 @@ async def inject_person(
             prompt_image = Image.open(io.BytesIO(await prompt_image.read()))
             prompt_image = resize_if_large(prompt_image)
             prompt_image = crop_to_divisible(prompt_image)
-
+        
         # Perform detection and segmentation of foreground.
         bboxes = detector.detect(image)        
         masks = segmentor.segment(image, bboxes)
@@ -341,19 +379,20 @@ async def inject_person(
             ip_adapter_scale=1,
             blend_scale=5,
         )
-        
-        # Send stitched image if in debug_mode.
-        if debug_mode:
-            final_image = np.zeros((new_photo.size[1], new_photo.size[0] * 2, 3), dtype=np.uint8)
-            final_image[:, :new_photo.size[0], :] = np.asarray(new_photo)
-            final_image[:, new_photo.size[0]:, :] = np.asarray(inapainted_image)
-            final_image = Image.fromarray(final_image)
-        else:
-            final_image = inapainted_image
+                
+        # Log request to db.        
+        log_db = {
+            "image": __encode_image_base64(image),
+            "prompt_image": __encode_image_base64(prompt_image),
+            "output_image": __encode_image_base64(inapainted_image),
+            "prompt": prompt,
+            "negative_prompt": negative_prompt,
+        }
+        __log_request(request, log_db)
 
         # Convert and return result.
         img_byte_arr = io.BytesIO()
-        final_image.save(img_byte_arr, format='PNG')
+        inapainted_image.save(img_byte_arr, format='PNG')
         img_byte_arr.seek(0)
         
         return StreamingResponse(img_byte_arr, media_type="image/png")
@@ -366,11 +405,12 @@ async def inject_person(
 # DONE
 @app.post("/inpaint_region")
 async def inpaint_region(
+    request: Request,
     image: UploadFile=File(...),
     mask_x: int=0,
     mask_y: int=0,
-    mask_width:int=128,
-    mask_height:int=128,
+    mask_width: int=128,
+    mask_height: int=128,
     prompt: str="",
     negative_prompt: str="",
 ):
@@ -393,12 +433,14 @@ async def inpaint_region(
         image = resize_if_large(image)   
         image = crop_to_divisible(image)
         image = np.asarray(image).copy()
-
+        
         # Mask region.
         mask = np.zeros(image.shape[:-1], dtype=np.uint8)
 
         mask[mask_x:mask_x+mask_width, mask_y:mask_y+mask_height] = 255        
         image[mask_x:mask_x+mask_width, mask_y:mask_y+mask_height, ...] = 0
+        
+        image = Image.fromarray(image)
         
         # Inpaint masked region.
         inpainted_image = inpaintor.inpaint(
@@ -409,6 +451,15 @@ async def inpaint_region(
             strength=1,
             guidance_scale=2
         )
+        
+        # Log request to db.        
+        log_db = {
+            "image": __encode_image_base64(image),
+            "output_image": __encode_image_base64(inpainted_image),
+            "prompt": prompt,
+            "negative_prompt": negative_prompt,
+        }
+        __log_request(request, log_db)
         
         # Return result
         img_byte_arr = io.BytesIO()
@@ -424,6 +475,7 @@ async def inpaint_region(
 
 @app.post("/segment_person")
 async def segment_person(
+    request: Request,
     image: UploadFile=File(...),
 ):
     """
@@ -446,6 +498,13 @@ async def segment_person(
         # Visualize segmentation.
         result = plot_mask_contours(np.asarray(image), masks)
         result = Image.fromarray(result)
+        
+        # Log request to db.        
+        log_db = {
+            "image": __encode_image_base64(image),
+            "output_image": __encode_image_base64(result),
+        }
+        __log_request(request, log_db)
         
         # Convert and return result.
         img_byte_arr = io.BytesIO()
